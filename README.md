@@ -25,6 +25,7 @@ earn    ──→  70% of every swap fee, claimable across all pairings in one t
 | [`apps/api/`](apps/api) | Image and descriptor hosting, chain reads | 9 routes, running |
 | [`packages/sdk/`](packages/sdk) | TypeScript SDK for launching programmatically | chain and stock registry |
 | [`docs/`](docs) | Deploy guide, architecture, API reference | |
+| [`docs/research/launchpads.md`](docs/research/launchpads.md) | The launchpad report: UX, UI, mechanics and revenue of the ten highest-earning launchpads, with a ranked feature list for clink.fun | 13,000 words |
 | [`ROADMAP.md`](ROADMAP.md) | MCP, x402, agents, and the launchpad feature matrix | |
 
 ## Run it
