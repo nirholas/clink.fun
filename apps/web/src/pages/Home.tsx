@@ -43,7 +43,7 @@ function CurveArt() {
 function Stat({ label, value }: { label: string; value: string }) {
 	return (
 		<div>
-			<div className="display text-2xl">{value}</div>
+			<div className="display whitespace-nowrap text-xl sm:text-2xl">{value}</div>
 			<div className="text-xs text-muted">{label}</div>
 		</div>
 	);
@@ -128,9 +128,9 @@ function Hero() {
 								i % 2 ? 'animate-float-slow' : 'animate-float'
 							}`}
 							style={{
-								top: `${-6 + ((i * 37) % 90)}%`,
-								left: i % 2 ? `${-14 + (i % 3) * 6}%` : undefined,
-								right: i % 2 ? undefined : `${-12 + (i % 3) * 5}%`,
+								top: `${4 + ((i * 37) % 84)}%`,
+								left: i % 2 ? `${-22 + (i % 3) * 4}%` : undefined,
+								right: i % 2 ? undefined : `${-20 + (i % 3) * 4}%`,
 								animationDelay: `${i * 0.7}s`,
 							}}
 						>
