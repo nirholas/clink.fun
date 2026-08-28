@@ -1,0 +1,12 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+solc = "0.8.28"
+optimizer = true
+optimizer_runs = 1000
+via_ir = false
+# No external dependencies on purpose. Everything the launchpad needs is in
+# src/, so `forge build` works offline and an auditor reads one directory
+# rather than chasing a remapping into someone else's repo.
