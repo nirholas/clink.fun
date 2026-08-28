@@ -8,7 +8,8 @@
 // Plain node:http, no framework. The whole surface is nine routes.
 
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
+import { extname, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { formatUnits, isAddress } from 'viem';
@@ -19,6 +20,23 @@ const PORT = Number(process.env.PORT || 8787);
 const PUBLIC_URL = (process.env.CLINK_PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
 const DATA_DIR = process.env.CLINK_DATA_DIR || join(dirname(fileURLToPath(import.meta.url)), '../../../data');
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
+// In production one container serves the built app and the API from the same
+// origin, which is what the frontend already assumes: it only ever calls
+// /api/* relative paths, so there is no CORS difference between dev and prod.
+const WEB_DIR = process.env.CLINK_WEB_DIR || '';
+
+const CONTENT_TYPES = {
+	'.html': 'text/html; charset=utf-8',
+	'.js': 'text/javascript; charset=utf-8',
+	'.css': 'text/css; charset=utf-8',
+	'.json': 'application/json; charset=utf-8',
+	'.svg': 'image/svg+xml',
+	'.png': 'image/png',
+	'.jpg': 'image/jpeg',
+	'.webp': 'image/webp',
+	'.woff2': 'font/woff2',
+	'.map': 'application/json; charset=utf-8',
+};
 
 const store = createStore(DATA_DIR);
 
@@ -246,12 +264,47 @@ const server = createServer(async (req, res) => {
 			return fail(res, status, err?.message || 'internal error');
 		}
 	}
+	if (WEB_DIR && req.method === 'GET') return serveStatic(url.pathname, res);
 	fail(res, 404, 'no such route');
 });
+
+/**
+ * Serve the built SPA. Hashed assets are immutable and cached forever;
+ * index.html never is, or a deploy would not reach anyone still holding the old
+ * one. Unknown paths fall through to index.html because the router owns them.
+ */
+async function serveStatic(pathname, res) {
+	const root = resolve(WEB_DIR);
+	const requested = resolve(root, `.${normalize(pathname)}`);
+	// Refuse anything that escapes the web root. The path comes off the wire.
+	const safe = requested === root || requested.startsWith(root + sep) ? requested : root;
+
+	let file = safe;
+	try {
+		const info = await stat(file);
+		if (info.isDirectory()) file = resolve(file, 'index.html');
+	} catch {
+		file = resolve(root, 'index.html');
+	}
+
+	try {
+		const bytes = await readFile(file);
+		const ext = extname(file);
+		const hashed = /\.[0-9a-zA-Z_-]{8,}\.(js|css)$/.test(file);
+		res.writeHead(200, {
+			'content-type': CONTENT_TYPES[ext] || 'application/octet-stream',
+			'cache-control': hashed ? 'public, max-age=31536000, immutable' : 'no-cache',
+		});
+		res.end(bytes);
+	} catch {
+		fail(res, 404, 'not found');
+	}
+}
 
 server.listen(PORT, () => {
 	console.log(`[api] listening on ${PORT}`);
 	console.log(`[api] data dir ${DATA_DIR}`);
 	console.log(`[api] launchpad ${LAUNCHPAD || 'NOT SET (set CLINK_LAUNCHPAD)'}`);
 	console.log(`[api] max image ${(MAX_IMAGE_BYTES / 1024 / 1024).toFixed(0)}MB`);
+	console.log(`[api] web dir ${WEB_DIR || 'not serving static files'}`);
 });
