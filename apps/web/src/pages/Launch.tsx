@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import { decodeEventLog, keccak256, parseUnits, toBytes } from 'viem';
 import { api } from '../lib/api';
@@ -7,7 +7,7 @@ import { useConfig, useStocks } from '../lib/hooks';
 import { LAUNCHPAD_ADDRESS, NO_DEV_BUY, erc20Abi, launchpadAbi } from '../lib/contracts';
 import { ROBINHOOD_CHAIN_ID, txUrl } from '../lib/chain';
 import { sanitizeName, sanitizeSymbol, trim } from '../lib/format';
-import MarketPicker, { type Selection } from '../components/MarketPicker';
+import MarketPicker, { evenWeights, type Selection } from '../components/MarketPicker';
 import { NotConfigured } from '../components/States';
 
 type Phase = 'idle' | 'uploading' | 'approving' | 'signing' | 'confirming' | 'done' | 'error';
@@ -16,6 +16,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 export default function Launch() {
 	const navigate = useNavigate();
+	const [params] = useSearchParams();
 	const { address, isConnected, chainId } = useAccount();
 	const { data: walletClient } = useWalletClient();
 	const publicClient = usePublicClient();
@@ -35,6 +36,37 @@ export default function Launch() {
 	const [phase, setPhase] = useState<Phase>('idle');
 	const [message, setMessage] = useState('');
 	const [result, setResult] = useState<{ token: string; hash: string } | null>(null);
+
+
+	/** Launch intent: any partner can deep-link a prepared launch with query
+	 * parameters, e.g. /launch?name=Chips&symbol=CHIPS&markets=NVDAx,SPCX.
+	 * Markets get even weights; the user can still change everything. */
+	useEffect(() => {
+		if (params.get('name')) setName(params.get('name') ?? '');
+		if (params.get('symbol')) setSymbol(params.get('symbol') ?? '');
+		if (params.get('description')) setDescription(params.get('description') ?? '');
+		const website = params.get('website') ?? '';
+		const twitter = params.get('twitter') ?? '';
+		const telegram = params.get('telegram') ?? '';
+		if (website || twitter || telegram) {
+			setLinks({ website, twitter, telegram });
+			setShowLinks(true);
+		}
+		if (params.get('devBuy')) setDevBuy(params.get('devBuy') ?? '');
+	}, [params]);
+
+	useEffect(() => {
+		const wanted = (params.get('markets') ?? '')
+			.split(',')
+			.map((s) => s.trim().toLowerCase())
+			.filter(Boolean)
+			.slice(0, 5);
+		if (!wanted.length || !stocks?.length) return;
+		const picked = stocks.filter((stock) => wanted.includes(stock.symbol.toLowerCase()));
+		if (!picked.length) return;
+		const weights = evenWeights(picked.length);
+		setMarkets(picked.map((stock, i) => ({ symbol: stock.symbol, address: stock.address as `0x${string}`, weightBps: weights[i] ?? 0 })));
+	}, [params, stocks]);
 
 	const cleanSymbol = sanitizeSymbol(symbol);
 	const cleanName = sanitizeName(name);

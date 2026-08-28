@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import { useConfig, useStocks, useTokens } from '../lib/hooks';
 import TokenCard from '../components/TokenCard';
 import { CardGridSkeleton, Empty, ErrorState } from '../components/States';
-import { trim } from '../lib/format';
+import { pct, trim } from '../lib/format';
+import type { TokenSummary } from '../lib/api';
 
 function Hero() {
 	const { data: config } = useConfig();
@@ -62,6 +63,47 @@ function MarketStrip() {
 	);
 }
 
+
+/** The highest-cap coin that has not graduated yet: where the volume is right
+ * now. Every Solana launchpad pins this; on a stock-quoted launchpad the
+ * closest honest proxy is the coin that has sold the most of its curve. */
+function KingOfTheHill({ tokens }: { tokens: TokenSummary[] }) {
+	const live = tokens.filter((t) => t.pairs.some((p) => p.soldPct < 100));
+	if (!live.length) return null;
+	const progress = (t: TokenSummary) => Math.max(...t.pairs.map((p) => p.soldPct));
+	const king = [...live].sort((a, b) => progress(b) - progress(a))[0];
+	if (!king) return null;
+	const lead = [...king.pairs].sort((a, b) => b.soldPct - a.soldPct)[0];
+	if (!lead) return null;
+	return (
+		<section className="mx-auto max-w-7xl px-4 pt-12 sm:px-6">
+			<Link
+				to={`/token/${king.address}`}
+				className="group flex items-center gap-4 rounded-xl border border-accent/30 bg-accent-dim/40 p-4
+					transition-all duration-200 hover:border-accent/60 hover:bg-accent-dim"
+				aria-label={`King of the hill: ${king.name}`}
+			>
+				<div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-ink-850">
+					{king.image && <img src={king.image} alt="" className="h-full w-full object-cover" />}
+				</div>
+				<div className="min-w-0 flex-1">
+					<div className="text-[11px] uppercase tracking-wider text-accent-soft">King of the hill</div>
+					<div className="truncate text-base font-medium">
+						{king.name} <span className="text-muted">${king.symbol}</span>
+					</div>
+					<div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+						<div className="h-full rounded-full bg-accent transition-[width] duration-500" style={{ width: `${Math.min(100, lead.soldPct)}%` }} />
+					</div>
+				</div>
+				<div className="shrink-0 text-right">
+					<div className="font-mono text-lg">{pct(lead.soldPct)}</div>
+					<div className="text-xs text-muted">sold on /{lead.quoteSymbol}</div>
+				</div>
+			</Link>
+		</section>
+	);
+}
+
 export default function Home() {
 	const { data: tokens, isLoading, error, refetch } = useTokens(12);
 
@@ -69,6 +111,7 @@ export default function Home() {
 		<>
 			<Hero />
 			<MarketStrip />
+			{tokens && tokens.length > 0 && <KingOfTheHill tokens={tokens} />}
 
 			<section className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
 				<div className="mb-5 flex items-end justify-between gap-4">
