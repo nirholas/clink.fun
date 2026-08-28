@@ -7,6 +7,8 @@ export interface Pair {
 	quoteToken: `0x${string}`;
 	quoteSymbol: string;
 	weightBps: number;
+	virtualQuote: string;
+	virtualToken: string;
 	priceQuote: string;
 	raisedQuote: string;
 	tokensLeft: string;
@@ -63,6 +65,15 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const api = {
+	trades: (address: string, market?: string, limit = 200) =>
+		get<{ items: import('./charts').Trade[]; total: number }>(
+			`/api/tokens/${address}/trades?limit=${limit}${market ? `&market=${market}` : ''}`,
+		),
+	candles: (address: string, interval: string, market?: string) =>
+		get<{ interval: string; candles: import('./charts').Candle[] }>(
+			`/api/tokens/${address}/candles?interval=${interval}${market ? `&market=${market}` : ''}`,
+		),
+
 	config: () => get<ClinkConfig>('/api/config'),
 	stocks: () => get<StockToken[]>('/api/stocks'),
 	tokens: (limit = 50, offset = 0) =>

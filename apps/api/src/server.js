@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path';
 import { formatUnits, isAddress } from 'viem';
 import { createStore, MAX_IMAGE_BYTES } from './store.js';
 import { LAUNCHPAD, cached, erc20Abi, launchpadAbi, publicClient } from './chain.js';
+import { INTERVALS, toCandles, tradesCached } from './indexer.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const PUBLIC_URL = (process.env.CLINK_PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
@@ -102,6 +103,12 @@ async function loadToken(address) {
 				quoteToken,
 				quoteSymbol,
 				weightBps: curve.weightBps,
+				// The raw reserves travel with the pair so the client can plot
+				// the whole curve, not just the point it currently sits on. It
+				// is pure math from these two numbers, so the shape renders
+				// even for a coin that has never traded.
+				virtualQuote: curve.virtualQuote.toString(),
+				virtualToken: curve.virtualToken.toString(),
 				priceQuote: formatUnits(price, 18),
 				// What the curve actually holds, which is the only number here
 				// that is a claim on something rather than a quote.
@@ -176,6 +183,26 @@ const routes = [
 		} catch {
 			fail(res, 404, 'token not found');
 		}
+	}],
+
+	['GET', /^\/api\/tokens\/(0x[0-9a-fA-F]{40})\/trades$/, async (_req, res, m, url) => {
+		const market = url.searchParams.get('market') || undefined;
+		const limit = Math.min(500, Number(url.searchParams.get('limit') || 200));
+		const trades = await tradesCached(m[1], market);
+		json(res, 200, { items: trades.slice(-limit).reverse(), total: trades.length }, {
+			'cache-control': 'public, max-age=10',
+		});
+	}],
+
+	['GET', /^\/api\/tokens\/(0x[0-9a-fA-F]{40})\/candles$/, async (_req, res, m, url) => {
+		const market = url.searchParams.get('market') || undefined;
+		const key = url.searchParams.get('interval') || '5m';
+		const seconds = INTERVALS[key];
+		if (!seconds) return fail(res, 400, `interval must be one of ${Object.keys(INTERVALS).join(', ')}`);
+		const trades = await tradesCached(m[1], market);
+		json(res, 200, { interval: key, candles: toCandles(trades, seconds) }, {
+			'cache-control': 'public, max-age=10',
+		});
 	}],
 
 	['POST', /^\/api\/images$/, async (req, res) => {

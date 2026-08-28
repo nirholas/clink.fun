@@ -7,6 +7,8 @@ import { LAUNCHPAD_ADDRESS, erc20Abi, launchpadAbi } from '../lib/contracts';
 import { addressUrl, txUrl } from '../lib/chain';
 import { pct, shortAddress, trim } from '../lib/format';
 import { ErrorState } from '../components/States';
+import ChartPanel from '../components/ChartPanel';
+import TradeFeed from '../components/TradeFeed';
 
 type Side = 'buy' | 'sell';
 
@@ -88,6 +90,8 @@ export default function Token() {
 						</div>
 					)}
 
+					{market && <ChartPanel token={token} market={market} />}
+
 					{market && (
 						<div className="panel p-5">
 							<div className="mb-2 flex items-center justify-between text-xs text-muted">
@@ -106,6 +110,8 @@ export default function Token() {
 							</p>
 						</div>
 					)}
+
+					{market && <TradeFeed token={token.address} market={market} />}
 
 					<div className="panel space-y-3 p-5 text-sm">
 						<h2 className="text-sm font-medium">About this coin</h2>
