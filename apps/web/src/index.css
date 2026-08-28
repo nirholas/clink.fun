@@ -94,7 +94,7 @@
 
 	/* Display headlines: the fomo.family register. Lowercase, tight, huge. */
 	.display {
-		@apply font-display font-bold lowercase tracking-[-0.03em];
+		@apply font-display font-bold tracking-[-0.03em];
 	}
 
 	.gradient-text {
