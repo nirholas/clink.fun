@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+	:root {
+		color-scheme: dark;
+	}
+
+	html,
+	body,
+	#root {
+		height: 100%;
+	}
+
+	body {
+		@apply bg-ink-950 text-white/90 font-sans antialiased;
+		/* A single soft light source behind the page so large empty areas read
+		   as depth rather than as a failure to load. */
+		background-image: radial-gradient(1100px 500px at 50% -12%, rgba(168, 85, 247, 0.09), transparent 62%);
+		background-attachment: fixed;
+	}
+
+	::selection {
+		@apply bg-accent/30;
+	}
+
+	/* Focus is never removed, only restyled. Keyboard users get the same
+	   affordance everyone else gets from hover. */
+	:focus-visible {
+		@apply outline-none ring-2 ring-accent/70 ring-offset-2 ring-offset-ink-950;
+	}
+}
+
+@layer components {
+	.panel {
+		@apply rounded-xl border border-white/10 bg-ink-900/70 backdrop-blur-sm;
+	}
+
+	.btn {
+		@apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium
+			transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40;
+	}
+
+	.btn-primary {
+		@apply btn bg-accent text-white hover:bg-accent-soft active:bg-accent;
+	}
+
+	.btn-ghost {
+		@apply btn border border-white/12 text-white/80 hover:border-white/25 hover:text-white;
+	}
+
+	.input {
+		@apply w-full rounded-lg border border-white/10 bg-ink-850 px-3 py-2.5 text-sm text-white
+			placeholder:text-muted transition-colors focus:border-accent/60;
+	}
+
+	.label {
+		@apply mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted;
+	}
+
+	.chip {
+		@apply inline-flex items-center gap-1 rounded-md border border-white/10 bg-ink-800
+			px-2 py-1 font-mono text-[11px] text-white/70;
+	}
+}
