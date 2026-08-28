@@ -105,6 +105,9 @@ export default function MarketPicker({
 						</div>
 					))}
 
+					{/* Reads as confirmation when it is right and as an instruction
+					    only when it is wrong. A permanent "must total 100%" next to
+					    a correct 100% looks like a failure the user cannot clear. */}
 					<div
 						className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs ${
 							total === BPS
@@ -112,7 +115,13 @@ export default function MarketPicker({
 								: 'border-down/30 bg-down/8 text-down'
 						}`}
 					>
-						<span>Allocation must total exactly 100%</span>
+						<span>
+							{total === BPS
+								? `Allocation set across ${selected.length} market${selected.length === 1 ? '' : 's'}`
+								: total > BPS
+									? `Over by ${((total - BPS) / 100).toFixed(2)}%`
+									: `Short by ${((BPS - total) / 100).toFixed(2)}%`}
+						</span>
 						<span className="font-mono">{(total / 100).toFixed(2)}%</span>
 					</div>
 

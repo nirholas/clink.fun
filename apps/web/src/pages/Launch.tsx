@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
-import { decodeEventLog, keccak256, parseUnits, toBytes } from 'viem';
+import { useAccount, useBalance, usePublicClient, useWalletClient } from 'wagmi';
+import { decodeEventLog, formatEther, keccak256, parseUnits, toBytes } from 'viem';
 import { api } from '../lib/api';
 import { useConfig, useStocks } from '../lib/hooks';
 import { LAUNCHPAD_ADDRESS, NO_DEV_BUY, erc20Abi, launchpadAbi } from '../lib/contracts';
-import { ROBINHOOD_CHAIN_ID, txUrl } from '../lib/chain';
+import { BRIDGES, ROBINHOOD_CHAIN_ID, txUrl } from '../lib/chain';
 import { sanitizeName, sanitizeSymbol, trim } from '../lib/format';
 import MarketPicker, { evenWeights, type Selection } from '../components/MarketPicker';
 import { NotConfigured } from '../components/States';
@@ -13,6 +13,62 @@ import { NotConfigured } from '../components/States';
 type Phase = 'idle' | 'uploading' | 'approving' | 'signing' | 'confirming' | 'done' | 'error';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** Headroom for gas on top of the launch fee. Robinhood Chain is an L2 and a
+ * launch creates one pool per market, so this covers the five-market case with
+ * room to spare. It gates the button so nobody signs a transaction their
+ * balance cannot pay for and gets a raw RPC string back. */
+const GAS_HEADROOM_WEI = 300_000_000_000_000n; // 0.0003 ETH
+
+/** A wallet or node error is never shown raw. Every branch here says what
+ * happened and what to do about it. */
+function explainError(error: unknown): string {
+	const raw = error instanceof Error ? error.message : String(error);
+	const text = raw.toLowerCase();
+
+	if (text.includes('exceeds the balance') || text.includes('insufficient funds')) {
+		return 'Your wallet does not have enough ETH on Robinhood Chain to cover the launch fee plus gas. Bridge a little ETH and try again.';
+	}
+	if (text.includes('user rejected') || text.includes('user denied') || text.includes('rejected the request')) {
+		return 'You cancelled the transaction in your wallet. Nothing was spent and nothing was created.';
+	}
+	if (text.includes('transfer amount exceeds balance') || text.includes('erc20: insufficient')) {
+		return 'You do not hold enough of that stock token for the launch buy. Lower the amount or clear it to skip the buy.';
+	}
+	if (text.includes('insufficient allowance')) {
+		return 'The approval for your launch buy did not go through. Try again and confirm both prompts in your wallet.';
+	}
+	if (text.includes('deadline') || text.includes('expired')) {
+		return 'The transaction sat unsigned for too long and the deadline passed. Press launch again to get a fresh one.';
+	}
+	if (text.includes('reverted') || text.includes('execution reverted')) {
+		return 'The contract rejected the launch. Check that your allocation totals exactly 100% and that the ticker is not already taken.';
+	}
+	if (text.includes('chain') && text.includes('mismatch')) {
+		return 'Your wallet is on the wrong network. Switch to Robinhood Chain and try again.';
+	}
+	if (text.includes('failed to fetch') || text.includes('network')) {
+		return 'The network request failed. Check your connection and try again; nothing was submitted.';
+	}
+	return raw.split('\n')[0] ?? 'Something went wrong.';
+}
+
+function Step({ n, title, hint }: { n: number; title: string; hint?: string }) {
+	return (
+		<div className="mb-4 flex items-start gap-3">
+			<span
+				className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-accent/40
+					bg-accent-dim font-mono text-[11px] text-accent-soft"
+			>
+				{n}
+			</span>
+			<div>
+				<h2 className="display text-lg leading-none">{title}</h2>
+				{hint && <p className="mt-1.5 text-xs leading-relaxed text-muted">{hint}</p>}
+			</div>
+		</div>
+	);
+}
 
 export default function Launch() {
 	const navigate = useNavigate();
@@ -22,6 +78,7 @@ export default function Launch() {
 	const publicClient = usePublicClient();
 	const { data: config } = useConfig();
 	const { data: stocks } = useStocks();
+	const { data: balance } = useBalance({ address, query: { enabled: isConnected } });
 	const fileInput = useRef<HTMLInputElement>(null);
 
 	const [name, setName] = useState('');
@@ -36,7 +93,6 @@ export default function Launch() {
 	const [phase, setPhase] = useState<Phase>('idle');
 	const [message, setMessage] = useState('');
 	const [result, setResult] = useState<{ token: string; hash: string } | null>(null);
-
 
 	/** Launch intent: any partner can deep-link a prepared launch with query
 	 * parameters, e.g. /launch?name=Chips&symbol=CHIPS&markets=NVDAx,SPCX.
@@ -65,12 +121,24 @@ export default function Launch() {
 		const picked = stocks.filter((stock) => wanted.includes(stock.symbol.toLowerCase()));
 		if (!picked.length) return;
 		const weights = evenWeights(picked.length);
-		setMarkets(picked.map((stock, i) => ({ symbol: stock.symbol, address: stock.address as `0x${string}`, weightBps: weights[i] ?? 0 })));
+		setMarkets(
+			picked.map((stock, i) => ({
+				symbol: stock.symbol,
+				address: stock.address as `0x${string}`,
+				weightBps: weights[i] ?? 0,
+			})),
+		);
 	}, [params, stocks]);
 
 	const cleanSymbol = sanitizeSymbol(symbol);
 	const cleanName = sanitizeName(name);
 	const weightTotal = markets.reduce((sum, m) => sum + m.weightBps, 0);
+
+	const launchFeeWei = BigInt(config?.launchFeeWei ?? '0');
+	const requiredWei = launchFeeWei + GAS_HEADROOM_WEI;
+	// The wallet knows the balance before anything is signed, so a wallet that
+	// cannot pay is caught here rather than after the user commits.
+	const shortOnEth = isConnected && balance !== undefined && balance.value < requiredWei;
 
 	const problems = useMemo(() => {
 		const list: string[] = [];
@@ -80,8 +148,9 @@ export default function Launch() {
 		if (markets.length > 0 && weightTotal !== 10_000) list.push('Allocation must total exactly 100%');
 		if (!isConnected) list.push('Connect a wallet');
 		if (isConnected && chainId !== ROBINHOOD_CHAIN_ID) list.push('Switch to Robinhood Chain');
+		if (shortOnEth) list.push('Not enough ETH for the launch fee plus gas');
 		return list;
-	}, [cleanName, cleanSymbol, markets, weightTotal, isConnected, chainId]);
+	}, [cleanName, cleanSymbol, markets, weightTotal, isConnected, chainId, shortOnEth]);
 
 	function pickImage(file: File | undefined) {
 		if (!file) return;
@@ -153,7 +222,7 @@ export default function Launch() {
 			// 3. The launch itself.
 			setPhase('signing');
 			setMessage('Confirm the launch in your wallet');
-			const params = {
+			const launchParams = {
 				name: cleanName,
 				symbol: cleanSymbol,
 				metadataURI: meta.url,
@@ -170,8 +239,8 @@ export default function Launch() {
 				address: LAUNCHPAD_ADDRESS,
 				abi: launchpadAbi,
 				functionName: 'launch',
-				args: [params],
-				value: BigInt(config?.launchFeeWei ?? '0'),
+				args: [launchParams],
+				value: launchFeeWei,
 				account: address!,
 			});
 			const hash = await walletClient.writeContract(request);
@@ -191,7 +260,9 @@ export default function Launch() {
 						token = (parsed.args as unknown as { token: string }).token;
 						break;
 					}
-				} catch { /* not our event */ }
+				} catch {
+					/* not our event */
+				}
 			}
 
 			setResult({ token, hash });
@@ -199,8 +270,7 @@ export default function Launch() {
 			if (token) setTimeout(() => navigate(`/token/${token}`), 1600);
 		} catch (error) {
 			setPhase('error');
-			const detail = error instanceof Error ? error.message : String(error);
-			setMessage(detail.split('\n')[0] ?? 'Something went wrong');
+			setMessage(explainError(error));
 		}
 	}
 
@@ -215,16 +285,21 @@ export default function Launch() {
 	const busy = phase === 'uploading' || phase === 'approving' || phase === 'signing' || phase === 'confirming';
 
 	return (
-		<div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-			<h1 className="display text-4xl">launch a coin</h1>
-			<p className="mt-1 text-sm text-muted">
-				Choose carefully. Name, ticker, artwork and pairing are permanent once the transaction lands.
-			</p>
+		<div className="relative mx-auto max-w-6xl px-4 py-12 sm:px-6">
+			<div className="orb -left-24 top-0 h-72 w-72 bg-accent/15" />
 
-			<div className="mt-8 grid gap-6 lg:grid-cols-[1fr_340px]">
-				<div className="space-y-6">
-					<section className="panel space-y-4 p-5">
-						<h2 className="text-sm font-medium">Coin details</h2>
+			<div className="relative">
+				<h1 className="display text-4xl sm:text-5xl">launch a coin</h1>
+				<p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
+					Name, ticker, artwork and pairing are permanent once the transaction lands. Everything
+					below is one transaction.
+				</p>
+			</div>
+
+			<div className="relative mt-10 grid gap-6 lg:grid-cols-[1fr_360px]">
+				<div className="space-y-5">
+					<section className="panel p-6">
+						<Step n={1} title="coin details" />
 
 						<div className="grid gap-4 sm:grid-cols-2">
 							<div>
@@ -242,7 +317,7 @@ export default function Launch() {
 								<label className="label" htmlFor="coin-ticker">Ticker</label>
 								<input
 									id="coin-ticker"
-									className="input font-mono"
+									className="input font-mono uppercase"
 									value={symbol}
 									maxLength={12}
 									onChange={(event) => setSymbol(event.target.value)}
@@ -256,7 +331,7 @@ export default function Launch() {
 							</div>
 						</div>
 
-						<div>
+						<div className="mt-4">
 							<label className="label" htmlFor="coin-description">Description</label>
 							<textarea
 								id="coin-description"
@@ -268,7 +343,7 @@ export default function Launch() {
 							/>
 						</div>
 
-						<div>
+						<div className="mt-4">
 							<button
 								type="button"
 								onClick={() => setShowLinks((open) => !open)}
@@ -277,7 +352,7 @@ export default function Launch() {
 								{showLinks ? 'Hide' : 'Add'} social links (optional)
 							</button>
 							{showLinks && (
-								<div className="mt-3 grid gap-3 sm:grid-cols-3">
+								<div className="mt-3 grid animate-rise gap-3 sm:grid-cols-3">
 									{(['website', 'twitter', 'telegram'] as const).map((key) => (
 										<input
 											key={key}
@@ -293,14 +368,12 @@ export default function Launch() {
 						</div>
 					</section>
 
-					<section className="panel space-y-4 p-5">
-						<div>
-							<h2 className="text-sm font-medium">Paired markets</h2>
-							<p className="mt-1 text-xs leading-relaxed text-muted">
-								Each market becomes its own independent pool with its own price. The allocation
-								splits the fixed supply between them. It is launch liquidity, not backing.
-							</p>
-						</div>
+					<section className="panel p-6">
+						<Step
+							n={2}
+							title="paired markets"
+							hint="Each market becomes its own independent pool with its own price. The allocation splits the fixed supply between them. It is launch liquidity, not backing."
+						/>
 						{stocks ? (
 							<MarketPicker stocks={stocks} selected={markets} onChange={setMarkets} />
 						) : (
@@ -308,8 +381,8 @@ export default function Launch() {
 						)}
 					</section>
 
-					<section className="panel space-y-3 p-5">
-						<h2 className="text-sm font-medium">Artwork</h2>
+					<section className="panel p-6">
+						<Step n={3} title="artwork" />
 						<div
 							onClick={() => fileInput.current?.click()}
 							onDragOver={(event) => event.preventDefault()}
@@ -317,12 +390,12 @@ export default function Launch() {
 								event.preventDefault();
 								pickImage(event.dataTransfer.files[0]);
 							}}
-							className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg
-								border border-dashed border-white/15 bg-ink-850/50 px-6 py-12 transition-colors
-								hover:border-accent/40"
+							className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl
+								border border-dashed border-white/15 bg-ink-850/50 px-6 py-12 transition-all
+								hover:border-accent/50 hover:bg-accent-dim/30"
 						>
 							{imagePreview ? (
-								<img src={imagePreview} alt="" className="max-h-56 rounded-lg object-contain" />
+								<img src={imagePreview} alt="" className="max-h-56 rounded-xl object-contain" />
 							) : (
 								<>
 									<span className="text-sm text-white/70">Drop an image, or click to choose</span>
@@ -344,21 +417,19 @@ export default function Launch() {
 									setImageFile(null);
 									setImagePreview(null);
 								}}
-								className="text-xs text-muted hover:text-white"
+								className="mt-3 text-xs text-muted hover:text-white"
 							>
 								Remove image
 							</button>
 						)}
 					</section>
 
-					<section className="panel space-y-3 p-5">
-						<div>
-							<h2 className="text-sm font-medium">Buy your own coin at launch (optional)</h2>
-							<p className="mt-1 text-xs leading-relaxed text-muted">
-								Spends the paired stock from your wallet in the first market, in the same
-								transaction. Leave it empty to skip. Skipping needs no stock and no approval.
-							</p>
-						</div>
+					<section className="panel p-6">
+						<Step
+							n={4}
+							title="buy your own coin (optional)"
+							hint="Spends the paired stock from your wallet in the first market, in the same transaction. Leave it empty to skip. Skipping needs no stock and no approval."
+						/>
 						<div className="flex items-center gap-2">
 							<input
 								className="input font-mono"
@@ -366,6 +437,7 @@ export default function Launch() {
 								value={devBuy}
 								onChange={(event) => setDevBuy(event.target.value.replace(/[^0-9.]/g, ''))}
 								placeholder="0.0"
+								aria-label="Launch buy amount"
 							/>
 							<span className="shrink-0 font-mono text-sm text-muted">
 								{markets[0]?.symbol ?? 'stock'}
@@ -374,35 +446,41 @@ export default function Launch() {
 					</section>
 				</div>
 
-				<aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
-					<div className="panel overflow-hidden">
-						<div className="border-b border-white/8 px-4 py-3 text-xs uppercase tracking-wider text-muted">
-							Preview
-						</div>
-						<div className="aspect-square w-full bg-ink-850">
+				<aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+					{/* The preview is the card the coin will actually appear as in
+					    the feed, so what you see here is what everyone else sees. */}
+					<div className="glow-border is-on overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] shadow-card backdrop-blur-md">
+						<div className="relative aspect-square w-full bg-ink-850">
 							{imagePreview ? (
 								<img src={imagePreview} alt="" className="h-full w-full object-cover" />
 							) : (
-								<div className="flex h-full items-center justify-center font-mono text-4xl text-white/12">
-									{cleanSymbol.slice(0, 4) || '?'}
+								<div className="flex h-full items-center justify-center bg-gradient-to-br from-ink-800 to-ink-950">
+									<span className="display text-5xl text-white/10">{cleanSymbol.slice(0, 4) || '?'}</span>
 								</div>
 							)}
-						</div>
-						<div className="space-y-3 p-4">
-							<div className="flex flex-wrap gap-1.5">
+							<div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-ink-950/90 to-transparent" />
+							<div className="absolute left-2.5 top-2.5 flex flex-wrap gap-1">
 								{markets.length ? (
 									markets.map((m) => (
-										<span key={m.symbol} className="chip">
+										<span
+											key={m.symbol}
+											className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-ink-950/70
+												px-1.5 py-0.5 font-mono text-[10px] backdrop-blur-sm"
+										>
 											<span className="text-accent-soft">/{m.symbol}</span>
-											<span className="text-muted">{(m.weightBps / 100).toFixed(0)}%</span>
+											<span className="text-white/50">{(m.weightBps / 100).toFixed(0)}%</span>
 										</span>
 									))
 								) : (
-									<span className="chip text-muted">no market picked</span>
+									<span className="rounded-md border border-white/15 bg-ink-950/70 px-1.5 py-0.5 font-mono text-[10px] text-white/50">
+										no market picked
+									</span>
 								)}
 							</div>
-							<div className="font-semibold">{cleanSymbol || 'TICKER'}</div>
-							<div className="text-xs text-muted">{cleanName || 'Your coin name'}</div>
+							<div className="absolute bottom-2.5 left-3 right-3">
+								<div className="display truncate text-xl leading-none">${cleanSymbol || 'TICKER'}</div>
+								<div className="mt-0.5 truncate text-xs text-white/60">{cleanName || 'Your coin name'}</div>
+							</div>
 						</div>
 					</div>
 
@@ -425,12 +503,50 @@ export default function Launch() {
 							<span className="text-muted">Your share of fees</span>
 							<span className="font-mono text-up">70%</span>
 						</div>
+						{isConnected && balance && (
+							<div className="flex justify-between border-t border-white/8 pt-2">
+								<span className="text-muted">Your balance</span>
+								<span className={`font-mono ${shortOnEth ? 'text-down' : 'text-white/80'}`}>
+									{trim(balance.formatted, 5)} ETH
+								</span>
+							</div>
+						)}
 					</div>
 
-					{problems.length > 0 && (
-						<ul className="space-y-1 rounded-lg border border-white/10 bg-ink-900/60 p-3 text-xs text-muted">
+					{/* Not enough ETH is the one failure a creator cannot fix on
+					    this page, so it gets the bridge links rather than a line
+					    in a list. */}
+					{shortOnEth && (
+						<div className="animate-rise space-y-2 rounded-xl border border-down/30 bg-down/8 p-4 text-xs">
+							<p className="font-medium text-down">You need a little ETH on Robinhood Chain</p>
+							<p className="leading-relaxed text-white/70">
+								Launching costs {config ? trim(config.launchFeeEth, 6) : '0.0005'} ETH plus gas, so
+								keep about <span className="font-mono">{trim(formatEther(requiredWei), 5)} ETH</span>{' '}
+								on hand. You have <span className="font-mono">{trim(balance?.formatted ?? '0', 5)}</span>.
+							</p>
+							<div className="flex flex-wrap gap-2 pt-1">
+								{BRIDGES.map((bridge) => (
+									<a
+										key={bridge.name}
+										href={bridge.url}
+										target="_blank"
+										rel="noreferrer"
+										className="btn-ghost rounded-full px-3 py-1.5 text-[11px]"
+									>
+										Bridge via {bridge.name}
+									</a>
+								))}
+							</div>
+						</div>
+					)}
+
+					{problems.length > 0 && !shortOnEth && (
+						<ul className="space-y-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-3.5 text-xs text-muted">
 							{problems.map((problem) => (
-								<li key={problem}>{problem}</li>
+								<li key={problem} className="flex items-start gap-2">
+									<span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-white/30" />
+									{problem}
+								</li>
 							))}
 						</ul>
 					)}
@@ -439,19 +555,19 @@ export default function Launch() {
 						type="button"
 						disabled={problems.length > 0 || busy}
 						onClick={submit}
-						className="btn-primary w-full py-3 text-base"
+						className="btn-primary w-full rounded-xl py-3.5 text-base"
 					>
-						{busy ? message || 'Working...' : 'Launch coin'}
+						{busy ? message || 'Working...' : 'launch coin'}
 					</button>
 
 					{phase === 'error' && (
-						<p className="break-words rounded-lg border border-down/30 bg-down/8 p-3 text-xs text-down">
+						<p className="animate-rise break-words rounded-xl border border-down/30 bg-down/8 p-3.5 text-xs leading-relaxed text-down">
 							{message}
 						</p>
 					)}
 
 					{phase === 'done' && result && (
-						<div className="space-y-2 rounded-lg border border-up/30 bg-up/8 p-3 text-xs text-up">
+						<div className="animate-rise space-y-2 rounded-xl border border-up/30 bg-up/8 p-3.5 text-xs text-up">
 							<p>Launched. Taking you to the coin page.</p>
 							<a className="underline" href={txUrl(result.hash)} target="_blank" rel="noreferrer">
 								View transaction
