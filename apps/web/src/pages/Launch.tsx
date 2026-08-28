@@ -216,7 +216,7 @@ export default function Launch() {
 
 	return (
 		<div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-			<h1 className="text-2xl font-semibold tracking-tight">Launch a coin</h1>
+			<h1 className="display text-4xl">launch a coin</h1>
 			<p className="mt-1 text-sm text-muted">
 				Choose carefully. Name, ticker, artwork and pairing are permanent once the transaction lands.
 			</p>

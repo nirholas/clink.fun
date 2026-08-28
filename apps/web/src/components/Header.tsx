@@ -4,20 +4,26 @@ import { ROBINHOOD_CHAIN_ID } from '../lib/chain';
 import { shortAddress, trim } from '../lib/format';
 
 const NAV = [
-	{ to: '/explore', label: 'Explore' },
-	{ to: '/launch', label: 'Launch' },
-	{ to: '/portfolio', label: 'Portfolio' },
-	{ to: '/docs', label: 'Docs' },
+	{ to: '/explore', label: 'explore' },
+	{ to: '/launch', label: 'launch' },
+	{ to: '/portfolio', label: 'portfolio' },
+	{ to: '/docs', label: 'docs' },
 ];
 
 export function Logo({ className = '' }: { className?: string }) {
 	return (
 		<span className={`inline-flex items-center gap-2 ${className}`}>
 			<svg viewBox="0 0 32 32" className="h-7 w-7" aria-hidden="true">
+				<defs>
+					<linearGradient id="clink-g" x1="0" y1="0" x2="1" y2="1">
+						<stop offset="0" stopColor="#c084fc" />
+						<stop offset="1" stopColor="#38bdf8" />
+					</linearGradient>
+				</defs>
 				<circle cx="13" cy="16" r="8" fill="none" stroke="currentColor" strokeWidth="2.6" opacity="0.9" />
-				<circle cx="22.5" cy="16" r="4.2" fill="#a855f7" />
+				<circle cx="22.5" cy="16" r="4.4" fill="url(#clink-g)" />
 			</svg>
-			<span className="text-[15px] font-semibold tracking-tight">clink.fun</span>
+			<span className="display text-[17px] font-bold">clink.fun</span>
 		</span>
 	);
 }
@@ -32,24 +38,23 @@ export default function Header() {
 	const wrongChain = isConnected && chainId !== ROBINHOOD_CHAIN_ID;
 	const injectedConnector = connectors[0];
 
+	const navClass = ({ isActive }: { isActive: boolean }) =>
+		`rounded-full px-3.5 py-1.5 text-sm transition-all ${
+			isActive
+				? 'bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+				: 'text-white/60 hover:bg-white/5 hover:text-white'
+		}`;
+
 	return (
-		<header className="sticky top-0 z-40 border-b border-white/8 bg-ink-950/85 backdrop-blur-md">
-			<div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4 sm:px-6">
+		<header className="sticky top-0 z-40 border-b border-white/6 bg-ink-950/70 backdrop-blur-xl">
+			<div className="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4 sm:px-6">
 				<Link to="/" className="text-white transition-opacity hover:opacity-80" aria-label="clink.fun home">
 					<Logo />
 				</Link>
 
-				<nav className="hidden items-center gap-1 md:flex">
+				<nav className="hidden items-center gap-0.5 rounded-full border border-white/8 bg-white/[0.03] p-1 md:flex">
 					{NAV.map((item) => (
-						<NavLink
-							key={item.to}
-							to={item.to}
-							className={({ isActive }) =>
-								`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-									isActive ? 'bg-white/8 text-white' : 'text-white/60 hover:text-white'
-								}`
-							}
-						>
+						<NavLink key={item.to} to={item.to} className={navClass}>
 							{item.label}
 						</NavLink>
 					))}
@@ -63,7 +68,7 @@ export default function Header() {
 						<button
 							type="button"
 							onClick={() => switchChain({ chainId: ROBINHOOD_CHAIN_ID })}
-							className="btn rounded-lg border border-down/40 bg-down/10 text-xs text-down hover:bg-down/20"
+							className="btn rounded-full border border-down/40 bg-down/10 text-xs text-down hover:bg-down/20"
 						>
 							Switch to Robinhood Chain
 						</button>
@@ -76,7 +81,8 @@ export default function Header() {
 					)}
 
 					{isConnected ? (
-						<button type="button" onClick={() => disconnect()} className="btn-ghost text-xs">
+						<button type="button" onClick={() => disconnect()} className="btn-ghost rounded-full text-xs">
+							<span className="h-1.5 w-1.5 rounded-full bg-up" />
 							{shortAddress(address)}
 						</button>
 					) : (
@@ -84,9 +90,9 @@ export default function Header() {
 							type="button"
 							disabled={!injectedConnector || isPending}
 							onClick={() => injectedConnector && connect({ connector: injectedConnector })}
-							className="btn-primary text-sm"
+							className="btn-primary rounded-full text-sm"
 						>
-							{isPending ? 'Connecting...' : 'Connect Wallet'}
+							{isPending ? 'Connecting...' : 'Connect wallet'}
 						</button>
 					)}
 				</div>
@@ -98,8 +104,8 @@ export default function Header() {
 						key={item.to}
 						to={item.to}
 						className={({ isActive }) =>
-							`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm ${
-								isActive ? 'bg-white/8 text-white' : 'text-white/60'
+							`whitespace-nowrap rounded-full px-3 py-1.5 text-sm ${
+								isActive ? 'bg-white/10 text-white' : 'text-white/60'
 							}`
 						}
 					>

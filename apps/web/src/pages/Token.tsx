@@ -36,7 +36,7 @@ export default function Token() {
 	return (
 		<div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
 			<div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-				<div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-ink-850">
+				<div className="glow-border is-on h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-ink-850 shadow-glow-sm">
 					{token.image ? (
 						<img src={token.image} alt="" className="h-full w-full object-cover" />
 					) : (
@@ -48,7 +48,7 @@ export default function Token() {
 
 				<div className="min-w-0 flex-1">
 					<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-						<h1 className="text-2xl font-semibold tracking-tight">{token.symbol}</h1>
+						<h1 className="display text-4xl sm:text-5xl">${token.symbol}</h1>
 						<span className="text-muted">{token.name}</span>
 					</div>
 					{token.description && (
@@ -82,7 +82,7 @@ export default function Token() {
 			<div className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
 				<div className="space-y-4">
 					{market && (
-						<div className="panel grid grid-cols-2 gap-4 p-5 sm:grid-cols-4">
+						<div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
 							<Stat label={`Price / ${market.quoteSymbol}`} value={trim(market.priceQuote, 10)} />
 							<Stat label="Raised" value={`${trim(market.raisedQuote, 4)} ${market.quoteSymbol}`} />
 							<Stat label="Sold" value={pct(market.soldPct, 2)} />
@@ -132,9 +132,9 @@ export default function Token() {
 
 function Stat({ label, value }: { label: string; value: string }) {
 	return (
-		<div>
+		<div className="panel p-4">
 			<div className="text-[11px] uppercase tracking-wider text-muted">{label}</div>
-			<div className="mt-1 truncate font-mono text-sm">{value}</div>
+			<div className="mt-1 truncate font-mono text-base text-white">{value}</div>
 		</div>
 	);
 }

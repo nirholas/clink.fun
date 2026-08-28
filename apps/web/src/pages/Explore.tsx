@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useStocks, useTokens } from '../lib/hooks';
 import TokenCard from '../components/TokenCard';
 import { CardGridSkeleton, Empty, ErrorState } from '../components/States';
@@ -15,7 +16,8 @@ export default function Explore() {
 	const { data: tokens, isLoading, error, refetch } = useTokens(100);
 	const { data: stocks } = useStocks();
 	const [query, setQuery] = useState('');
-	const [market, setMarket] = useState('all');
+	const [params] = useSearchParams();
+	const [market, setMarket] = useState(params.get('market') ?? 'all');
 	const [sort, setSort] = useState<SortKey>('newest');
 
 	const filtered = useMemo(() => {
@@ -41,7 +43,7 @@ export default function Explore() {
 
 	return (
 		<div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-			<h1 className="text-2xl font-semibold tracking-tight">Explore</h1>
+			<h1 className="display text-4xl">explore</h1>
 			<p className="mt-1 text-sm text-muted">Every coin on the launchpad, read from the contract.</p>
 
 			<div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -103,7 +105,7 @@ export default function Explore() {
 						<p className="mb-3 text-xs text-muted">
 							{filtered.length} coin{filtered.length === 1 ? '' : 's'}
 						</p>
-						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+						<div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
 							{filtered.map((token) => (
 								<TokenCard key={token.address} token={token} />
 							))}

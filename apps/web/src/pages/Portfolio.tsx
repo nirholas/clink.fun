@@ -104,7 +104,7 @@ export default function Portfolio() {
 
 	return (
 		<div className="mx-auto max-w-5xl space-y-8 px-4 py-10 sm:px-6">
-			<h1 className="text-2xl font-semibold tracking-tight">Portfolio</h1>
+			<h1 className="display text-4xl">portfolio</h1>
 
 			<section className="panel p-5">
 				<div className="mb-4 flex items-center justify-between gap-4">
