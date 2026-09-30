@@ -1,4 +1,4 @@
-# paired.exchange
+# paired.exchange 
 
 **Launch a coin paired with real stocks.** Permissionless, fixed supply, liquidity
 nobody can pull. On Robinhood Chain.
