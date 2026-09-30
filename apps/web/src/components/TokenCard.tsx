@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { TokenSummary } from '../lib/api';
 import { pct, trim } from '../lib/format';
+import OriginBadge from './OriginBadge';
 
 /** The pairing badges. This is the one thing a card here shows that a card on
  * any other launchpad cannot, so it sits on the artwork rather than under it. */
@@ -89,16 +90,16 @@ export default function TokenCard({ token, rank }: { token: TokenSummary; rank?:
 						#{rank}
 					</span>
 				)}
-				{graduated && (
-					<span className="absolute bottom-2.5 right-2.5 rounded-md bg-up/20 px-1.5 py-0.5 font-mono text-[10px] text-up">
-						graduated
-					</span>
-				)}
-
 				<div className="absolute bottom-2.5 left-3 right-3 flex items-end justify-between gap-2">
 					<div className="min-w-0">
 						<div className="display truncate text-xl leading-none text-white">${token.symbol}</div>
 						<div className="mt-0.5 truncate text-xs text-white/60">{token.name}</div>
+					</div>
+					<div className="flex shrink-0 flex-col items-end gap-1">
+						<OriginBadge origin={token.origin} />
+						{graduated && (
+							<span className="rounded-md bg-up/20 px-1.5 py-0.5 font-mono text-[10px] text-up">graduated</span>
+						)}
 					</div>
 				</div>
 			</div>

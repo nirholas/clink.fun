@@ -9,7 +9,7 @@
 // A short cache in front of it, because the homepage would otherwise make one
 // RPC call per token per visitor.
 
-import { createPublicClient, http, defineChain } from 'viem';
+import { createPublicClient, http, defineChain, parseAbiItem } from 'viem';
 
 export const ROBINHOOD_CHAIN_ID = 4663;
 
@@ -39,6 +39,28 @@ export const launchpadAbi = [
 	{ name: 'priceOf', type: 'function', stateMutability: 'view', inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'uint256' }] },
 	{ name: 'launchFeeWei', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
 	{ name: 'swapFeeBps', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint16' }] },
+	{ name: 'claimable', type: 'function', stateMutability: 'view', inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'uint256' }] },
+	{
+		name: 'quoteConfig',
+		type: 'function',
+		stateMutability: 'view',
+		inputs: [{ type: 'address' }],
+		outputs: [{ name: 'virtualQuote', type: 'uint128' }, { name: 'enabled', type: 'bool' }],
+	},
+	{
+		name: 'quoteBuy',
+		type: 'function',
+		stateMutability: 'view',
+		inputs: [{ type: 'address' }, { type: 'address' }, { type: 'uint256' }],
+		outputs: [{ name: 'tokensOut', type: 'uint256' }, { name: 'fee', type: 'uint256' }],
+	},
+	{
+		name: 'quoteSell',
+		type: 'function',
+		stateMutability: 'view',
+		inputs: [{ type: 'address' }, { type: 'address' }, { type: 'uint256' }],
+		outputs: [{ name: 'quoteOut', type: 'uint256' }, { name: 'fee', type: 'uint256' }],
+	},
 	{
 		name: 'curveOf',
 		type: 'function',
@@ -57,6 +79,15 @@ export const launchpadAbi = [
 		}],
 	},
 ];
+
+export const launchedEvent = parseAbiItem(
+	'event Launched(address indexed token, address indexed creator, string name, string symbol, string metadataURI, (address quoteToken, uint16 weightBps)[] allocations)',
+);
+
+/** Creator's cut of swap fees, a constant in the contract. */
+export const CREATOR_FEE_SHARE_BPS = 7_000;
+
+export const EXPLORER = 'https://robinhoodchain.blockscout.com';
 
 export const erc20Abi = [
 	{ name: 'name', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },

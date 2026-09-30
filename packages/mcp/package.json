@@ -1,0 +1,15 @@
+{
+	"name": "clink-mcp",
+	"version": "0.1.0",
+	"description": "Launch coins paired with tokenized stocks on Robinhood Chain from any MCP client. Stdio bridge to the clink.fun remote MCP server.",
+	"type": "module",
+	"bin": { "clink-mcp": "bin/clink-mcp.js" },
+	"files": ["bin", "README.md"],
+	"engines": { "node": ">=18" },
+	"keywords": ["mcp", "model-context-protocol", "claude", "token-launchpad", "robinhood-chain", "tokenized-stocks", "bonding-curve"],
+	"license": "Apache-2.0",
+	"repository": { "type": "git", "url": "git+https://github.com/nirholas/clink.fun.git", "directory": "packages/mcp" },
+	"homepage": "https://github.com/nirholas/clink.fun#launch-from-claude",
+	"mcpName": "io.github.nirholas/clink",
+	"dependencies": { "@modelcontextprotocol/sdk": "^1.31.0" }
+}

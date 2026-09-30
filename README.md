@@ -22,8 +22,9 @@ earn    ──→  70% of every swap fee, claimable across all pairings in one t
 |---|---|---|
 | [`contracts/`](contracts) | Launchpad and token, Solidity, no dependencies | 30 tests pass, **unaudited** |
 | [`apps/web/`](apps/web) | The site. React, Vite, Tailwind, wagmi | 7 pages, typechecked, builds |
-| [`apps/api/`](apps/api) | Image and descriptor hosting, chain reads | 9 routes, running |
+| [`apps/api/`](apps/api) | Image and descriptor hosting, chain reads, the MCP server at `/mcp` | running, tested |
 | [`packages/sdk/`](packages/sdk) | TypeScript SDK for launching programmatically | chain and stock registry |
+| [`packages/mcp/`](packages/mcp) | `clink-mcp`, the stdio bridge for MCP clients that launch servers with `npx` | tested against the live tool set |
 | [`docs/`](docs) | Deploy guide, architecture, API reference | |
 | [`docs/research/launchpads.md`](docs/research/launchpads.md) | The launchpad report: UX, UI, mechanics and revenue of the ten highest-earning launchpads, with a ranked feature list for clink.fun | 13,000 words |
 | [`ROADMAP.md`](ROADMAP.md) | MCP, x402, agents, and the launchpad feature matrix | |
@@ -53,6 +54,59 @@ npm run dev
 The web app runs on port 3000 and proxies `/api` to the API on 8787, so the app
 always calls same-origin paths and there is no CORS difference between
 development and production.
+
+## Launch from Claude
+
+clink.fun is a remote MCP server, so Claude, or any assistant that speaks the
+[Model Context Protocol](https://modelcontextprotocol.io), can browse markets,
+read coins, price trades and plan a launch.
+
+```bash
+# Claude Code
+claude mcp add --transport http clink https://clink-fun-93741856042.us-central1.run.app/mcp
+```
+
+Claude on the web or desktop: Settings, Connectors, Add custom connector, then
+paste the same URL. Clients that start servers over stdio run
+`npx -y clink-mcp` ([packages/mcp](packages/mcp)).
+
+| Tool | Does |
+|---|---|
+| `plan_launch` | Validate a coin and return a launch link the user signs with their wallet |
+| `launch_status` | Whether a planned launch has been signed, and the coin once it has |
+| `list_markets` | The stocks a coin can pair against |
+| `list_coins` | Launched coins, filterable by market or by launched-from-an-assistant |
+| `get_coin` | Price, curve and raise for every market a coin trades in |
+| `quote_trade` | Price a buy or sell before committing |
+| `claimable_fees` | Creator fees a wallet can claim right now |
+| `fee_schedule` | Launch fee, swap fee and creator share, live from the contract |
+
+**The assistant plans; a person signs.** `plan_launch` validates everything the
+launch form would (ticker, markets live on the contract, weights totalling
+100%), copies the logo onto this server, and stores a draft. It returns a
+`/launch?draft=<id>` link that opens the launch page with every field filled in
+and still editable. The user connects their own wallet and signs. There is no
+server-held key that can spend, which is the safety design the roadmap asked
+for.
+
+**Every coin launched this way is provably marked.** The draft-bound descriptor
+carries an `origin` block (channel, assistant, draft id) signed by the platform
+attester, and the keccak of the descriptor bytes is committed on chain at
+launch. Anyone can recover the signer of
+
+```
+clink.fun launch origin v1
+channel: prompt
+draft: <draft id>
+name: <coin name>
+symbol: <ticker>
+```
+
+and compare it with `attester` from `GET /api/config`. The site shows these
+coins with a "via Claude" badge and a filter on the explore page
+(`/explore?origin=prompt`, `GET /api/tokens?origin=prompt`). `launch_status`
+finds the coin with no report from the browser: it scans `Launched` events for
+a descriptor naming the draft.
 
 ## How the curve works
 

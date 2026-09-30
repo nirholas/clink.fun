@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.nirholas/clink",
+  "title": "clink.fun",
+  "description": "Launch coins quoted in tokenized stocks on Robinhood Chain; the user signs at a launch link.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/nirholas/clink.fun",
+    "source": "github",
+    "subfolder": "packages/mcp"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "clink-mcp",
+      "version": "0.1.0",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "CLINK_MCP_URL",
+          "description": "clink.fun MCP endpoint. Defaults to the production server.",
+          "isRequired": false,
+          "format": "string"
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    { "type": "streamable-http", "url": "https://clink-fun-93741856042.us-central1.run.app/mcp" }
+  ]
+}

@@ -17,6 +17,7 @@ does not keep.
 | Web app, all pages | done |
 | API, images and descriptors | done |
 | SDK, chain and stock registry | partial |
+| MCP server and `clink-mcp` bridge | done |
 | Deployed to mainnet | not yet |
 | Audit | not yet |
 
@@ -91,26 +92,24 @@ This is where the product can be genuinely different rather than merely better.
 A launchpad whose entire surface is callable by software is a launchpad that
 other software builds on.
 
-### MCP server
+### MCP server (shipped)
 
-Expose the launchpad as [Model Context Protocol](https://modelcontextprotocol.io)
-tools so an assistant can use it directly. The tool list is small because the
-product is small:
+Live at `/mcp` and documented in the README under "Launch from Claude". The
+tools shipped as planned (`list_markets`, `list_coins`, `get_coin`,
+`quote_trade`, `plan_launch`, `claimable_fees`) plus `fee_schedule` and
+`launch_status`.
 
-| Tool | Does |
-|---|---|
-| `list_markets` | The stock tokens available to pair against |
-| `list_coins` | Launched coins, newest first, with pairings |
-| `get_coin` | One coin, its curves, prices and progress |
-| `quote_trade` | Price a buy or sell before committing |
-| `plan_launch` | Build and price a launch without signing it |
-| `execute_launch` | Sign and send, behind an explicit approval |
-| `claimable_fees` | What a wallet can claim |
+`execute_launch` became a link instead of a tool. `plan_launch` returns a
+launch page with every field filled in, and the person signs there with their
+own wallet, which is the "signing requires a human" half of the design with no
+server-held key at all. What remains from the original plan is the standing
+authorization path: an agent signing within a spend cap, which belongs with the
+signing service below rather than in the MCP server.
 
-The split between `plan_launch` and `execute_launch` is the whole safety design.
-An agent may plan freely; signing requires a human or an explicit standing
-authorization with a spend cap. An MCP server that exposes a one-shot "launch a
-coin" tool to a model with a funded key is a liability, not a feature.
+Coins planned over MCP carry a signed origin in their hash-committed
+descriptor, so "launched from Claude" is a verifiable fact rather than a label.
+Next: list the server in the MCP registry (`server.json` at the repo root) and
+the directories that index it.
 
 ### x402 paid endpoints
 

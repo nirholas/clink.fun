@@ -55,8 +55,25 @@ gcloud run deploy clink-fun \
   --allow-unauthenticated --port=8080 --cpu=1 --memory=512Mi --max-instances=4 \
   --add-volume=name=data,type=cloud-storage,bucket=clink-fun-data \
   --add-volume-mount=volume=data,mount-path=/data \
-  --set-env-vars=CLINK_LAUNCHPAD=$LAUNCHPAD,CLINK_PUBLIC_URL=https://your-domain
+  --set-env-vars=CLINK_LAUNCHPAD=$LAUNCHPAD,CLINK_PUBLIC_URL=https://your-domain \
+  --set-secrets=CLINK_ATTESTER_KEY=clink-attester-key:latest
 ```
+
+`CLINK_ATTESTER_KEY` signs the origin of every coin planned over MCP. It never
+holds funds; losing it only means new MCP launches carry an unsigned origin.
+Create it once:
+
+```bash
+node -e "process.stdout.write('0x'+require('crypto').randomBytes(32).toString('hex'))" \
+  | gcloud secrets create clink-attester-key --data-file=- --project=$PROJECT
+gcloud secrets add-iam-policy-binding clink-attester-key --project=$PROJECT \
+  --member=serviceAccount:clink-fun-sa@$PROJECT.iam.gserviceaccount.com \
+  --role=roles/secretmanager.secretAccessor
+```
+
+Planned-launch drafts live in `/data/drafts` beside the images and descriptors,
+so the same bucket mount keeps them across deploys. The MCP server is served
+from the same container at `/mcp`.
 
 `CLINK_PUBLIC_URL` must be the real public origin. It is baked into every image
 and metadata URL the API hands out, and those go on chain.

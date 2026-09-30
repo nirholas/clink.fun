@@ -10,7 +10,7 @@
 // and buy nothing.
 
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile, stat } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile, stat } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 
 const MIME_EXT = {
@@ -31,10 +31,12 @@ export function sha256(bytes) {
 export function createStore(rootDir) {
 	const imagesDir = join(rootDir, 'images');
 	const metaDir = join(rootDir, 'metadata');
+	const draftsDir = join(rootDir, 'drafts');
 
 	const ready = Promise.all([
 		mkdir(imagesDir, { recursive: true }),
 		mkdir(metaDir, { recursive: true }),
+		mkdir(draftsDir, { recursive: true }),
 	]);
 
 	// Two levels of fan-out. A single directory with a hundred thousand entries
@@ -98,6 +100,31 @@ export function createStore(rootDir) {
 			await ready;
 			try {
 				return await readFile(shard(metaDir, hash, 'json'), 'utf8');
+			} catch {
+				return null;
+			}
+		},
+
+		/**
+		 * Launch drafts are the one mutable record here: a draft is written when
+		 * an assistant plans a launch and updated once, when the launch is found
+		 * on chain. The write goes to a temp file and is renamed into place so a
+		 * reader never sees half a document.
+		 */
+		async putDraft(draft) {
+			await ready;
+			const path = join(draftsDir, `${draft.id}.json`);
+			const temp = `${path}.${process.pid}.${Date.now()}.tmp`;
+			await writeFile(temp, JSON.stringify(draft), 'utf8');
+			await rename(temp, path);
+			return draft;
+		},
+
+		async getDraft(id) {
+			await ready;
+			if (!/^[A-Za-z0-9_-]{8,32}$/.test(id)) return null;
+			try {
+				return JSON.parse(await readFile(join(draftsDir, `${id}.json`), 'utf8'));
 			} catch {
 				return null;
 			}

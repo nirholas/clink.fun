@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAccount, useBalance, usePublicClient, useWalletClient } from 'wagmi';
 import { decodeEventLog, formatEther, keccak256, parseUnits, toBytes } from 'viem';
 import { api } from '../lib/api';
-import { useConfig, useStocks } from '../lib/hooks';
+import { useConfig, useDraft, useStocks } from '../lib/hooks';
 import { LAUNCHPAD_ADDRESS, NO_DEV_BUY, erc20Abi, launchpadAbi } from '../lib/contracts';
 import { BRIDGES, ROBINHOOD_CHAIN_ID, txUrl } from '../lib/chain';
-import { sanitizeName, sanitizeSymbol, trim } from '../lib/format';
+import { assistantName, sanitizeName, sanitizeSymbol, shortAddress, trim } from '../lib/format';
+import type { LaunchDraft } from '../lib/api';
 import MarketPicker, { evenWeights, type Selection } from '../components/MarketPicker';
 import { NotConfigured } from '../components/States';
 
@@ -90,6 +91,10 @@ export default function Launch() {
 	const [imageFile, setImageFile] = useState<File | null>(null);
 	const [imagePreview, setImagePreview] = useState<string | null>(null);
 	const [devBuy, setDevBuy] = useState('');
+	// Artwork an assistant already hosted for a planned launch. A file picked
+	// here replaces it.
+	const [draftImage, setDraftImage] = useState<string | null>(null);
+	const [feeWallet, setFeeWallet] = useState<`0x${string}` | null>(null);
 	const [phase, setPhase] = useState<Phase>('idle');
 	const [message, setMessage] = useState('');
 	const [result, setResult] = useState<{ token: string; hash: string } | null>(null);
@@ -110,6 +115,32 @@ export default function Launch() {
 		}
 		if (params.get('devBuy')) setDevBuy(params.get('devBuy') ?? '');
 	}, [params]);
+
+	/** A launch planned in an assistant over MCP: /launch?draft=<id>. Every
+	 * field arrives filled in and stays editable; signing is still the user's. */
+	const draftId = params.get('draft');
+	const { data: draft, error: draftError, isLoading: draftLoading } = useDraft(draftId);
+	const appliedDraft = useRef<string | null>(null);
+	useEffect(() => {
+		if (!draft || appliedDraft.current === draft.id) return;
+		appliedDraft.current = draft.id;
+		setName(draft.name);
+		setSymbol(draft.symbol);
+		setDescription(draft.description ?? '');
+		const website = draft.links.website ?? '';
+		const twitter = draft.links.twitter ?? '';
+		const telegram = draft.links.telegram ?? '';
+		setLinks({ website, twitter, telegram });
+		setShowLinks(Boolean(website || twitter || telegram));
+		setMarkets(draft.markets.map((m) => ({ symbol: m.symbol, address: m.address, weightBps: m.weightBps })));
+		setDevBuy(draft.devBuy ?? '');
+		setDraftImage(draft.image);
+		setImagePreview(draft.image);
+		setFeeWallet(draft.feeWallet);
+	}, [draft]);
+	// Only a live draft stamps its origin into the descriptor. An expired one
+	// still prefills the form, and launches as an ordinary site launch.
+	const liveDraft = draft?.status === 'awaiting signature' ? draft : null;
 
 	useEffect(() => {
 		const wanted = (params.get('markets') ?? '')
@@ -160,6 +191,7 @@ export default function Launch() {
 			return;
 		}
 		setImageFile(file);
+		setDraftImage(null);
 		setImagePreview(URL.createObjectURL(file));
 		if (phase === 'error') setPhase('idle');
 	}
@@ -174,7 +206,7 @@ export default function Launch() {
 			//    is hashed from the exact bytes the server stored, never from a
 			//    second serialization on this side, so the on-chain commitment
 			//    always matches what is served.
-			let imageUrl: string | undefined;
+			let imageUrl = draftImage ?? undefined;
 			if (imageFile) {
 				const base64 = await fileToBase64(imageFile);
 				const stored = await api.uploadImage(base64, imageFile.type);
@@ -189,6 +221,9 @@ export default function Launch() {
 				website: links.website.trim() || undefined,
 				twitter: links.twitter.trim() || undefined,
 				telegram: links.telegram.trim() || undefined,
+				// Binds the descriptor to the planned launch, which is what marks
+				// the coin as launched from an assistant, provably and forever.
+				draft: liveDraft?.id,
 			});
 			const metadataHash = keccak256(toBytes(meta.bytes));
 
@@ -228,7 +263,7 @@ export default function Launch() {
 				metadataURI: meta.url,
 				metadataHash,
 				allocations: markets.map((m) => ({ quoteToken: m.address, weightBps: m.weightBps })),
-				creatorFeeRecipient: address!,
+				creatorFeeRecipient: feeWallet ?? address!,
 				devBuyMarket,
 				devBuyQuoteIn,
 				devBuyMinTokensOut: 0n,
@@ -282,6 +317,14 @@ export default function Launch() {
 		);
 	}
 
+	if (draft?.status === 'launched' && draft.token) {
+		return (
+			<div className="mx-auto max-w-2xl px-4 py-16 sm:px-6">
+				<DraftLaunched draft={draft} />
+			</div>
+		);
+	}
+
 	const busy = phase === 'uploading' || phase === 'approving' || phase === 'signing' || phase === 'confirming';
 
 	return (
@@ -289,6 +332,7 @@ export default function Launch() {
 			<div className="orb -left-24 top-0 h-72 w-72 bg-accent/15" />
 
 			<div className="relative">
+				{draftId && <DraftBanner draft={draft} loading={draftLoading} failed={Boolean(draftError)} />}
 				<h1 className="display text-4xl sm:text-5xl">launch a coin</h1>
 				<p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
 					Name, ticker, artwork and pairing are permanent once the transaction lands. Everything
@@ -410,11 +454,12 @@ export default function Launch() {
 							className="hidden"
 							onChange={(event) => pickImage(event.target.files?.[0])}
 						/>
-						{imageFile && (
+						{(imageFile || draftImage) && (
 							<button
 								type="button"
 								onClick={() => {
 									setImageFile(null);
+									setDraftImage(null);
 									setImagePreview(null);
 								}}
 								className="mt-3 text-xs text-muted hover:text-white"
@@ -503,6 +548,21 @@ export default function Launch() {
 							<span className="text-muted">Your share of fees</span>
 							<span className="font-mono text-up">70%</span>
 						</div>
+						{feeWallet && (
+							<div className="flex items-center justify-between gap-2">
+								<span className="text-muted">Fees paid to</span>
+								<span className="flex items-center gap-2">
+									<span className="font-mono" title={feeWallet}>{shortAddress(feeWallet)}</span>
+									<button
+										type="button"
+										onClick={() => setFeeWallet(null)}
+										className="text-[11px] text-muted underline-offset-2 transition-colors hover:text-white hover:underline focus-visible:text-white"
+									>
+										use my wallet
+									</button>
+								</span>
+							</div>
+						)}
 						{isConnected && balance && (
 							<div className="flex justify-between border-t border-white/8 pt-2">
 								<span className="text-muted">Your balance</span>
@@ -591,4 +651,59 @@ function fileToBase64(file: File): Promise<string> {
 		reader.onerror = () => reject(new Error('Could not read that file'));
 		reader.readAsDataURL(file);
 	});
+}
+
+/** Where a planned launch came from, and what state it is in. */
+function DraftBanner({ draft, loading, failed }: { draft?: LaunchDraft; loading: boolean; failed: boolean }) {
+	if (loading) return <div className="mb-6 h-[62px] max-w-xl animate-pulse rounded-xl bg-white/5" />;
+	if (failed || !draft) {
+		return (
+			<div className="mb-6 max-w-xl animate-rise rounded-xl border border-down/30 bg-down/8 p-4 text-xs leading-relaxed text-down">
+				That launch plan could not be found. Ask your assistant to plan it again, or fill in the form below yourself.
+			</div>
+		);
+	}
+	const who = assistantName(draft.client);
+	if (draft.status === 'expired') {
+		return (
+			<div className="mb-6 max-w-xl animate-rise rounded-xl border border-white/10 bg-white/[0.03] p-4 text-xs leading-relaxed text-white/70">
+				This plan from {who} expired unsigned. The details are filled in below; launching now works, but the coin
+				will not be marked as launched from {who}. Ask {who} to plan it again for a fresh link.
+			</div>
+		);
+	}
+	return (
+		<div className="mb-6 flex max-w-xl animate-rise items-start gap-3 rounded-xl border border-accent/30 bg-accent-dim p-4 text-xs leading-relaxed">
+			<span className="mt-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent-soft" />
+			<p className="text-white/80">
+				<span className="font-medium text-accent-soft">Planned in {who}.</span> Everything below is filled in and still
+				editable. Nothing is deployed until you sign with your own wallet, and the coin will carry a signed record that
+				it was launched from {who}.
+			</p>
+		</div>
+	);
+}
+
+function DraftLaunched({ draft }: { draft: LaunchDraft }) {
+	return (
+		<div className="panel animate-rise space-y-4 p-6 text-sm">
+			<h1 className="display text-3xl">${draft.symbol} is live</h1>
+			<p className="leading-relaxed text-white/70">
+				This plan has already been signed and launched on Robinhood Chain. A plan can only be launched once.
+			</p>
+			<div className="flex flex-wrap gap-2">
+				<Link to={`/token/${draft.token}`} className="btn-primary rounded-full px-5 py-2.5">
+					open ${draft.symbol}
+				</Link>
+				{draft.txHash && (
+					<a href={txUrl(draft.txHash)} target="_blank" rel="noreferrer" className="btn-ghost rounded-full px-5 py-2.5">
+						view transaction
+					</a>
+				)}
+				<Link to="/launch" className="btn-ghost rounded-full px-5 py-2.5">
+					launch another
+				</Link>
+			</div>
+		</div>
+	);
 }

@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useLocation, useParams } from 'react-router-dom';
 import { BRIDGES, EXPLORER, ROBINHOOD_CHAIN_ID } from '../lib/chain';
 import { LAUNCHPAD_ADDRESS } from '../lib/contracts';
+import { useConfig } from '../lib/hooks';
 
 const SECTIONS = [
 	{ id: 'what', label: 'What this is' },
 	{ id: 'launch', label: 'Launching' },
+	{ id: 'mcp', label: 'Launch from Claude' },
 	{ id: 'curve', label: 'How pricing works' },
 	{ id: 'fees', label: 'Fees' },
 	{ id: 'chain', label: 'Chain and bridging' },
@@ -14,7 +17,18 @@ const SECTIONS = [
 ] as const;
 
 export default function Docs() {
-	const [active, setActive] = useState<string>('what');
+	const { section } = useParams();
+	const { hash } = useLocation();
+	const target = section ?? hash.replace(/^#/, '');
+	const [active, setActive] = useState<string>(SECTIONS.some((s) => s.id === target) ? target : 'what');
+	const { data: config } = useConfig();
+	const mcpUrl = config?.mcpUrl ?? `${window.location.origin}/mcp`;
+
+	// Deep links from other pages (/docs#mcp, /docs/mcp) land on their section.
+	useEffect(() => {
+		if (!target) return;
+		document.getElementById(target)?.scrollIntoView({ block: 'start' });
+	}, [target]);
 
 	return (
 		<div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -75,6 +89,57 @@ export default function Docs() {
 							The artwork and descriptor are stored content-addressed, and the keccak of the exact
 							descriptor bytes is written on chain alongside the URI. That commitment means a
 							rehosted document cannot silently differ from what was launched.
+						</p>
+					</Section>
+
+					<Section id="mcp" title="Launch from Claude">
+						<p>
+							clink.fun is a remote MCP server, so Claude (or any assistant that speaks the Model Context
+							Protocol) can browse markets, read coins, price trades and plan a launch for you. Planning is as
+							far as the assistant gets: it hands you a launch link, you open it, connect your own wallet,
+							review, and sign. Nothing is deployed and nothing is spent until you do.
+						</p>
+						<CopyField label="Connector URL" value={mcpUrl} />
+						<ol className="ml-5 list-decimal space-y-2">
+							<li>
+								<span className="text-white/90">Claude on the web or desktop:</span> Settings, Connectors, Add custom
+								connector, then paste the URL above.
+							</li>
+							<li>
+								<span className="text-white/90">Claude Code:</span>
+								<CopyField value={`claude mcp add --transport http clink ${mcpUrl}`} />
+							</li>
+							<li>
+								<span className="text-white/90">Clients that launch servers over stdio</span> (Cursor, Cline, Windsurf,
+								Claude Desktop config files) run the bridge package:
+								<CopyField value="npx -y clink-mcp" />
+							</li>
+						</ol>
+						<p>Then ask for what you want, for example: "launch a coin called Chip Dip, ticker CHIPS, 70% NVDA and 30% AMD".</p>
+						<Table
+							rows={[
+								['plan_launch', 'Validate a coin and return a launch link you sign with your wallet', ''],
+								['launch_status', 'Whether a planned launch has been signed, and the coin once it has', ''],
+								['list_markets', 'The stocks a coin can pair against', ''],
+								['list_coins', 'Launched coins, filterable by market or by launched-from-an-assistant', ''],
+								['get_coin', 'Price, curve and raise for every market a coin trades in', ''],
+								['quote_trade', 'Price a buy or sell before committing', ''],
+								['claimable_fees', 'Creator fees a wallet can claim right now', ''],
+								['fee_schedule', 'Launch fee, swap fee and creator share, live from the contract', ''],
+							]}
+						/>
+						<p>
+							Every coin planned this way records where it came from. Its descriptor, whose hash is written on
+							chain at launch, carries an origin block naming the channel, the assistant and the plan, signed by
+							the platform attester
+							{config?.attester ? (
+								<>
+									{' '}
+									<span className="break-all font-mono text-white/85">{config.attester}</span>
+								</>
+							) : null}
+							. Anyone can recover the signer of the origin message and check it, without trusting this site.
+							Coins launched this way carry a "via Claude" badge and have their own filter on the explore page.
 						</p>
 					</Section>
 
@@ -176,6 +241,9 @@ export default function Docs() {
 								['GET /api/stocks', 'The stock tokens available to pair against', ''],
 								['POST /api/images', 'Store artwork, returns a permanent URL', ''],
 								['POST /api/metadata', 'Store a descriptor, returns the URL and exact bytes', ''],
+								['GET /api/tokens?origin=prompt', 'Only coins planned by an assistant over MCP', ''],
+								['GET /api/drafts/:id', 'A planned launch, and its coin once signed', ''],
+								['POST /mcp', 'The MCP server, streamable HTTP', ''],
 							]}
 						/>
 						<p>
@@ -248,6 +316,38 @@ function Table({ rows }: { rows: (readonly [string, string, string])[] | string[
 					))}
 				</tbody>
 			</table>
+		</div>
+	);
+}
+
+/** A value people will paste somewhere, with a copy button that says when it worked. */
+function CopyField({ label, value }: { label?: string; value: string }) {
+	const [copied, setCopied] = useState(false);
+	async function copy() {
+		try {
+			await navigator.clipboard.writeText(value);
+			setCopied(true);
+			window.setTimeout(() => setCopied(false), 1500);
+		} catch {
+			setCopied(false);
+		}
+	}
+	return (
+		<div className="mt-2">
+			{label && <div className="label">{label}</div>}
+			<div className="flex items-center gap-2 rounded-lg border border-white/10 bg-ink-850/60 py-1.5 pl-3 pr-1.5">
+				<code className="min-w-0 flex-1 truncate font-mono text-xs text-white/85" title={value}>
+					{value}
+				</code>
+				<button
+					type="button"
+					onClick={copy}
+					aria-label={`Copy ${label ?? value}`}
+					className="btn-ghost shrink-0 rounded-md px-2.5 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+				>
+					{copied ? 'copied' : 'copy'}
+				</button>
+			</div>
 		</div>
 	);
 }

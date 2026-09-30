@@ -25,6 +25,18 @@ export function useTokens(limit = 50) {
 	});
 }
 
+/** A planned launch. Polled while it waits, so the page notices the moment it lands. */
+export function useDraft(id?: string | null) {
+	return useQuery({
+		queryKey: ['draft', id],
+		queryFn: () => api.draft(id!),
+		enabled: Boolean(id),
+		// A missing plan will not appear by asking again; anything else gets one retry.
+		retry: (failures, error) => failures < 1 && !/ 404$/.test(error.message),
+		refetchInterval: (query) => (query.state.data?.status === 'awaiting signature' ? 15_000 : false),
+	});
+}
+
 export function useToken(address?: string) {
 	return useQuery({
 		queryKey: ['token', address],

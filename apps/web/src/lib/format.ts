@@ -49,3 +49,11 @@ export function sanitizeSymbol(raw: string, max = 10): string {
 export function sanitizeName(raw: string, max = 32): string {
 	return raw.replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 }
+
+/** Display name for the assistant that planned a launch, from the MCP client hint. */
+export function assistantName(client: string | null | undefined): string {
+	if (client === 'claude') return 'Claude';
+	if (client === 'chatgpt') return 'ChatGPT';
+	if (client === 'cursor') return 'Cursor';
+	return 'your assistant';
+}

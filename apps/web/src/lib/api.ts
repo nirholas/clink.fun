@@ -22,11 +22,43 @@ export interface TokenSummary {
 	totalSupply: string;
 	metadataURI: string;
 	creator: `0x${string}`;
+	/** Set when the coin was planned by an assistant over MCP. */
+	origin?: LaunchOrigin | null;
 	pairs: Pair[];
 	/** Filled in by the client after resolving metadataURI. */
 	image?: string | null;
 	description?: string | null;
 	links?: { website?: string; twitter?: string; telegram?: string; discord?: string };
+}
+
+export interface LaunchOrigin {
+	channel: 'prompt' | 'site';
+	/** Which assistant planned it, e.g. "claude". */
+	client: string | null;
+	draft: string | null;
+	/** The origin signature recovers to the platform attester. */
+	verified: boolean;
+}
+
+/** A launch an assistant planned over MCP, waiting for a person to sign it here. */
+export interface LaunchDraft {
+	id: string;
+	channel: 'prompt' | 'site';
+	client: string | null;
+	status: 'awaiting signature' | 'launched' | 'expired';
+	createdAt: string;
+	expiresAt: string;
+	name: string;
+	symbol: string;
+	description: string | null;
+	image: string | null;
+	links: { website?: string; twitter?: string; telegram?: string };
+	markets: { symbol: string; address: `0x${string}`; weightBps: number }[];
+	devBuy: string | null;
+	feeWallet: `0x${string}` | null;
+	launchUrl: string;
+	token: `0x${string}` | null;
+	txHash: `0x${string}` | null;
 }
 
 export interface StockToken {
@@ -43,6 +75,8 @@ export interface ClinkConfig {
 	launchFeeEth: string;
 	swapFeeBps: number;
 	publicUrl: string;
+	mcpUrl: string;
+	attester: `0x${string}` | null;
 }
 
 async function get<T>(path: string): Promise<T> {
@@ -79,6 +113,7 @@ export const api = {
 	tokens: (limit = 50, offset = 0) =>
 		get<{ items: TokenSummary[]; total: number }>(`/api/tokens?limit=${limit}&offset=${offset}`),
 	token: (address: string) => get<TokenSummary>(`/api/tokens/${address}`),
+	draft: (id: string) => get<LaunchDraft>(`/api/drafts/${encodeURIComponent(id)}`),
 
 	uploadImage: (dataBase64: string, contentType: string) =>
 		post<{ hash: string; url: string }>('/api/images', { data: dataBase64, contentType }),

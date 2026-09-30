@@ -7,6 +7,7 @@ import { LAUNCHPAD_ADDRESS, erc20Abi, launchpadAbi } from '../lib/contracts';
 import { addressUrl, txUrl } from '../lib/chain';
 import { pct, shortAddress, trim } from '../lib/format';
 import { ErrorState } from '../components/States';
+import OriginBadge from '../components/OriginBadge';
 import ChartPanel from '../components/ChartPanel';
 import TradeFeed from '../components/TradeFeed';
 
@@ -75,6 +76,7 @@ export default function Token() {
 						>
 							{shortAddress(token.address)}
 						</a>
+						<OriginBadge origin={token.origin} href={token.metadataURI || undefined} size="md" />
 					</div>
 				</div>
 			</div>

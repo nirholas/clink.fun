@@ -84,6 +84,15 @@ function Hero() {
 							explore
 						</Link>
 					</div>
+					<Link
+						to="/docs#mcp"
+						className="group mt-4 inline-flex items-center gap-1.5 text-sm text-white/55 transition-colors hover:text-white focus-visible:text-white"
+					>
+						or ask Claude to launch it for you
+						<span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">
+							&rarr;
+						</span>
+					</Link>
 					<div className="mt-10 grid max-w-md grid-cols-3 gap-6 border-t border-white/8 pt-6">
 						<Stat label="coins launched" value={tokens ? String(tokens.length) : '…'} />
 						<Stat label="markets" value={stocks ? String(stocks.length) : '…'} />
